@@ -1,0 +1,224 @@
+This is a mirror of http://www.vim.org/scripts/script.php?script_id=1106
+
+"   Filetype plugin for java that allows you to jump to
+"   another java src file by searching your configured
+"   src path for the class name under the cursor.
+"
+"   For a given class name, supports finding children of it, implementations
+"   of it, methods that return it, methods that take it as an argument, test
+"   cases for it, or all references of it.
+"
+" Platform:
+"   This plugin uses the system find and grep commands extensively,
+"   so if you are having issues, it's probably due to incompatibility
+"   with one of those.  You can take a look at s:find_cmd, s:content_grep,
+"   and s:*_regex variables to see if they can be modified to suit your
+"   system.
+"
+"   If you find that you do have to modify any of these, feel free to
+"   send me your changes, and I will see if they are compatable or make
+"   alternate configurations available for users to choose from.
+"
+"   All my testing was done with
+"     GNU find version 4.1.20
+"     GNU grep version 2.5.1
+"
+"   Linux:
+"     All testing has been done on linux so various flavors of linux
+"     should be supported (as well as other *nix systems).
+"
+"   Windows:
+"     Works in conjunction with cygwin_utils.vim plugin.
+"     Make sure to read the Description comments in cygwin_utils.vim for
+"     configuration instructions and other notes.
+"
+"     Note: I've found that the 'find' command runs considerably
+"     slower on Windows enviroments.  So if you have serveral
+"     paths in you g:JavaSrcPaths variable, then searching may
+"     be a bit slow.
+"
+" Usage:
+"   When editing a java file the following commands are created
+"    :FindSrc
+"    :FindImpl
+"    :FindChildren
+"    :ContextualFindSrc
+"    :FindTest
+"    :FindArgument
+"    :FindReturned
+"    :FindReferenced
+"
+"   FindSrc: will search for the src file for the class name under the
+"   cursor and execute the configured g:JavaSrcCmd on it (unless
+"   g:JavaSrcUseGrep is set to 1), which could do any number of
+"   things such as edit, argadd, split, etc.
+"
+"   FindImpl: behaves just like FindSrc, except instead of searching for
+"   the class name under the cursor, it searches for classes that
+"   implement that class.
+"
+"   FindChildren: behaves just like FindSrc, except instead of searching
+"   for the class name under the cursor, it searches for classes that
+"   extend that class.
+"
+"   ContextualFindSrc: is a convenience command that decides which of the
+"   above commands to execute (FindSrc, FindImpl, or FindChildren) based
+"   on your position in the file.
+"   - If you are on the class declaration line (public class Foo), then
+"     it will execute FindChildren.
+"   - If you are on the interface declaration line (public interface Foo),
+"     then it will execute FindImpl.
+"   - Any where else in the file, FindSrc will be executed.
+"
+"   FindTest: behaves like FindSrc, except instead of searching
+"   for the class name under the cursor, it searches for the test
+"   case src file for the class.
+"     This command assumes that test case src files follow the junit
+"     naming conventions of "<classname>Test.java" where the <classname>
+"     is the name of the class under the cursor.
+"
+"   FindArgument: behaves like FindSrc, except instead of searching
+"   for the class name under the cursor, it searches for all src files
+"   that have a method that takes as an argument, that class.
+"
+"   FindReturned: behaves like FindSrc, except instead of searching
+"   for the class name under the cursor, it searches for all src files
+"   that have a method that returns that class.
+"
+"   FindReferenced: behaves like FindSrc, except instead of searching
+"   for the class name under the cursor, it searches for all src files
+"   that reference that class.
+"
+"   Note: All of the above commands (with the exception of ContextualFindSrc)
+"   can also be invoked with an argument.
+"     Ex.
+"       FindSrc org.bar.Foo
+"   This will invoke the command so it searches for the class name provided
+"   rather than the one under the cursor.  You may use fully qualified
+"   (org.bar.Foo) or un-qualified (Foo) class names.
+"
+"   Note: All of these find commands will attempt to filter out
+"   results that reference a different class that has the same
+"   class name as the one to search for.  It does this by attempting
+"   to locate the package name of the class to search for.
+"
+"     For example: If you have two classes with the name Foo
+"     one in com.bar.Foo and the other in com.bar.baz.Foo, and you
+"     start a search for the class Foo, then this plugin will attempt
+"     to determine which Foo you are searching for.
+"
+"     If you are editing one of the Foo classes, and you initiated the
+"     search with the cursor on the class declaration (public class Foo),
+"     then the package (package com.bar;)  declaration of the file will
+"     be used to narrow the results to the correct Foo class.
+"
+"     If you are in another file (say Bar.java) and you start a search
+"     for Foo, then the plugin will look to see if you used the fully
+"     qualified class name (com.bar.Foo) or if you imported the class
+"     (import com.bar.Foo;).  If you did either then the package name
+"     will be grabbed from there.  If you have done neither, then the
+"     plugin will return results for all Foo occurances regardless
+"     of package name.
+"
+"     So the moral of the story is, that if you want accurate results
+"     you should get in the habit of importing each class seperately
+"     and avoiding the * imports (import com.bar.*;).  This is a good
+"     habit anyways, that makes your code easier to read, navigate, and
+"     understand by others.
+"
+" Configuration:
+"   The following describes the global variables you can set in
+"   your vimrc to change the behavior of this plugin.
+"
+"     g:JavaSrcPaths
+"       No default.  Use this variable to set a comma seperated list
+"       of the paths you wish to have searched. Each path should be
+"       the parent directory of where your package structure begins.
+"       So for /a/path/src/java/org/acme/, assumming packages begin
+"       as org, you would use /a/path/src/java as the path to search.
+"
+"       Ex.  let g:JavaSrcPaths=
+"              \ "/a/path/src/java," .
+"              \ "/another/path/src/java"
+"
+"     g:JavaSrcTestPaths
+"       No default. Same as g:JavaSrcPaths but used by FindTest to
+"       locate unit testing src files.
+"
+"     g:JavaSrcShowResults
+"       Defaults to 0.  When set to 1, the Find commands will open
+"       a small preview window when multiple results have been found.
+"       In that window you can hit <enter> on the file you wish
+"       to open or use 'A' to load all results into the arg list.
+"
+"       Ex. let g:JavaSrcShowResults=1
+"
+"     g:JavaSrcUseGrep
+"       Defaults to 1.  When set to 1, the Find commands will use vim's
+"       :grep command to grep the results so that results can be
+"       navigated through using the quickfix command :cnext :cprev
+"       :copen, etc.
+"       Note: When g:JavaSrcShowResults is set, then grep is not used
+"             regardless of whether g:JavaSrcUseGrep is set or not.
+"
+"       Ex. let g:JavaSrcUseGrep=1
+"
+"       Use
+"         :help quickfix.txt
+"       to get more info on how grep and the quickfix paradigm works.
+"
+"     Note: When both g:JavaSrcShowResults and g:JavaSrcUseGrep are set
+"           to 0, then the g:JavaSrcCmd is executed on all files found
+"           with no preview or quickfix window.
+"
+"     g:JavaSrcCwindow
+"       Defaults to 1.  Used to determine whether or not to execute
+"       :cwindow to open the grep results after searching.  If set
+"       to 1, the window will be opened after every Find command.
+"       If set to 0, the window will remain closed and you can open
+"       it manually.
+"       Note:  Only used when g:JavaSrcUseGrep is set to 1 and
+"              g:JavaSrcShowResults is set to 0.
+"
+"       Ex. let g:JavaSrcCwindow=1
+"
+"     g:JavaSrcCmd
+"       Defaults to "split <file>".  Use this variable to set the
+"       command you wish to be invoked when using :Find* commands.
+"       The "<file>" will be replace with the file to open.
+"       Note: When g:JavaSrcShowResults is set to 0 and
+"             g:JavaSrcUseGrep is set to 1, this variable is not
+"             used.  Instead the quickfix commands are used.
+"
+"       Ex. let g:JavaSrcCmd="topleft split <file>"
+"       Ex. let g:JavaSrcCmd="argedit <file>"
+"       Ex. let g:JavaSrcCmd="call g:MyOpenFile(<file>)"
+"
+" Command Mapping:
+"   You may find it easier to map a command to something more convenient.
+"   For example, here is my mapping that allows me to simply hit
+"   <enter> on a class name to have it search for results based on the
+"   context (as described above).
+"
+"     autocmd FileType java map <silent> <buffer> <cr> :ContextualFindSrc<cr>
+"
+" Limitations:
+"   - FindChildren and FindImpl are limited to examining class names
+"     that follow "extends" | "implements" on the same line.  So src files
+"     that put each class on it's own line or wrap long extends / implements
+"     statements may not be found.
+"     This is a limitation of grep, which is used to find the files.
+"     This could be solved by further examining the contents of src files
+"     but would have a big impact on performance.
+"   - FindReturned only searches for methods with "public" | "private" |
+"     "protected" so as not to grab too many files.  Also the scope identifier
+"     must appear on the same line as the class name.
+"     As with the limitation on FindChildren and FileImpl, this is due to
+"     grep examining the files one line at a time, which prevents examining
+"     other lines to determine any sort of context.
+"
+" Todo:
+"   - Extend beyond class based searching and add method and field based
+"     searches (fields should be easy, methods could be hard to get reliable
+"     results).
+
